@@ -2,3 +2,12 @@
 .env
 node_modules/
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
