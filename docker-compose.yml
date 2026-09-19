@@ -1,0 +1,75 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: migration
+      POSTGRES_USER: migration
+      POSTGRES_PASSWORD: migration
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U migration -d migration"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    ports:
+      # Exposed only for optional local inspection; not required by the apps.
+      - "${POSTGRES_PORT:-55432}:5432"
+
+  api1:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://migration:migration@db:5432/migration
+      API_PORT: "8080"
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "8"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/scripts/healthcheck.sh"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api2:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://migration:migration@db:5432/migration
+      API_PORT: "8080"
+      GUNICORN_WORKERS: "2"
+      GUNICORN_THREADS: "8"
+    ports:
+      - "${API2_PORT:-8081}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/scripts/healthcheck.sh"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot acceptance suite. Runs the planner unit tests AND the end-to-end
+  # integration/concurrency tests, the latter hitting BOTH API instances
+  # (shared database) over HTTP with direct database connections available.
+  verify:
+    build: .
+    entrypoint: ["python", "-m", "pytest", "-v", "--tb=short", "tests"]
+    environment:
+      DATABASE_URL: postgresql://migration:migration@db:5432/migration
+      API1_URL: http://api1:8080
+      API2_URL: http://api2:8080
+    depends_on:
+      db:
+        condition: service_healthy
+      api1:
+        condition: service_healthy
+      api2:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  pgdata:
